@@ -1,0 +1,7 @@
+[package]
+name = "bitvecs"
+version = "0.1.0"
+authors = ["Dylan Wright"]
+edition = "2024"
+
+[dependencies]
