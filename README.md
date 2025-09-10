@@ -1,6 +1,10 @@
 # bitvecs
 A simple library for dynamically sized binary arrays. This is slower, but more versatile than a static binary array.
 
+## Change Log
+
+See [CHANGELOG](CHANGELOG.md).
+
 ## License
 This project is dual-licensed under either of
 - Apache License (Version 2.0), ([LICENSE-APACHE](LICENSE-APACHE) or [https://www.apache.org/licenses/LICENSE-2.0](https://www.apache.org/licenses/LICENSE-2.0))
