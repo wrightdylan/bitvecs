@@ -1,5 +1,5 @@
 # bitvecs
-A simple library for dynamically sized binary arrays. This is slower, but more versatile than a static binary array.
+A simple library for dynamically sized binary arrays. This is slower, but more versatile than a static binary array. It is also up to 8 times more space efficient than using a vector of bools.
 
 ## Change Log
 
