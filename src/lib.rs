@@ -3,8 +3,7 @@
 //! Second revision for improved memory management, faster performance, and
 //! expanded functionality.
 
-use std::fmt;
-use std::ops;
+use std::{cmp, fmt, ops};
 
 pub struct BitVec {
     data:     Vec<u8>,  // data vector
@@ -110,7 +109,16 @@ impl BitVec {
     /// let string = "A test string".to_string();
     /// let mut bundle = BitVec::from_string(&string);
     /// ```
-    pub fn from_string(data: &String) {} // Finish this
+    pub fn from_string(input: &String) -> Self {
+        let data = input.as_bytes().to_vec();
+
+        Self {
+            len: data.len(),
+            data,
+            byte_idx: 0,
+            bit_idx: 0
+        }
+    }
 
     /// Returns the bit value at the desired index. Bit is read from MSB
     pub fn get_bit(&self, index: usize) -> bool {
@@ -309,9 +317,47 @@ impl BitVec {
         self.bit_idx = 0;
     }
 
-    /// Finds the next set bit in a BitVec from a start index and returns
-    /// the index of that bit if one is found. Most useful for one-hot encoding.
-    pub fn next_set_bit(&self, start_idx: usize) {} // Finish this
+    /// Finds the next set bit in a BitVec from a start index (inclusive) and
+    /// returns the index of that bit if one is found. Most useful for one-hot
+    /// encoding.
+    pub fn next_set_bit(&self, start_idx: usize) -> Option<usize> {
+        let mut start_byte = start_idx / 8;
+        let bit_offset = start_idx % 8;
+
+        if start_byte >= self.data.len() {
+            return None;
+        }
+
+        fn find_set_bit(byte: u8, start_bit: usize) -> Option<usize> {
+            for bit in start_bit..8 {
+                if byte & (0x80 >> bit) != 0 {
+                    return Some(bit);
+                }
+            }
+            None
+        }
+
+        if bit_offset > 0 {
+            let mask = 0xFF >> bit_offset;
+            if self.data[start_byte] & mask != 0 {
+                if let Some(bit_pos) = find_set_bit(self.data[start_byte], bit_offset) {
+                    return Some(start_byte * 8 + bit_pos);
+                } else {
+                    start_byte += 1;
+                }
+            }
+        }
+
+        for byte_idx in start_byte..self.data.len() {
+            if self.data[byte_idx] != 0 {
+                if let Some(bit_pos) = find_set_bit(self.data[byte_idx], 0) {
+                    return Some(byte_idx * 8 + bit_pos);
+                }
+            }
+        }
+
+        None
+    }
 
     /// Sets the bit at the desired index. If the bit to be set is beyond the
     /// current capacity, then the vector will grow to accomodate the new bit
@@ -424,16 +470,8 @@ impl BitVec {
         }
     }
 
-    /// Returns a new BitVector containing the complimentary intersection
-    /// between two BitVectors (aka NAND). This is likely to be one of the most
-    /// common compound operation, so it gets its own special function.
-    pub fn comp_int(&self, other: &BitVec) {} // Finish this!
-
-    /// Returns a new BitVector containing the similarities between two BitVecs (aka AND)
-    pub fn intersec(&self, other: &BitVec) {} // Finish this!
-
     /// Returns a new BitVector containing an inversion of the original (aka NOT)
-    pub fn compliment(&self) -> BitVec {
+    pub fn compliment(&self) -> Self {
         let mut inverted = Vec::new();
 
         for byte in self.data.iter() {
@@ -453,11 +491,74 @@ impl BitVec {
         }
     }
 
+    /// Returns a new BitVector containing the similarities between two BitVecs (aka AND)
+    pub fn intersec(&self, other: &BitVec) -> Self {
+        let mut data = Vec::new();
+        let len = cmp::min(self.len, other.len);
+
+        for (byte1, byte2) in self.data.iter().zip(other.data.iter()) {
+            data.push(byte1 & byte2);
+        }
+
+        Self {
+            data,
+            len,
+            byte_idx: 0,
+            bit_idx: 0,
+        }
+    }
+
     /// Returns a new BitVector containing the symmetric difference between two BitVecs (aka XOR)
-    pub fn symm_diff(&self, other: &BitVec) {} // Finish this!
+    pub fn symm_diff(&self, other: &BitVec) -> Self {
+        let mut data = Vec::new();
+        let len = cmp::max(self.len, other.len);
+
+        let data_len1 = self.data.len();
+        let data_len2 = other.data.len();
+
+        for (byte1, byte2) in self.data.iter().zip(other.data.iter()) {
+            data.push(byte1 ^ byte2);
+        }
+
+        if data_len1 <= data_len2 {
+            data.extend_from_slice(&other.data[(data_len2 - data_len1)..]);
+        } else {
+            data.extend_from_slice(&self.data[(data_len1 - data_len2)..]);
+        }
+
+        Self {
+            data,
+            len,
+            byte_idx: 0,
+            bit_idx: 0,
+        }
+    }
 
     /// Returns a new BitVector containing a union of two BitVecs (aka OR)
-    pub fn union(&self, other: &BitVec) {} // Finish this!
+    pub fn union(&self, other: &BitVec) -> Self {
+        let mut data = Vec::new();
+        let len = cmp::max(self.len, other.len);
+
+        let data_len1 = self.data.len();
+        let data_len2 = other.data.len();
+
+        for (byte1, byte2) in self.data.iter().zip(other.data.iter()) {
+            data.push(byte1 | byte2);
+        }
+
+        if data_len1 <= data_len2 {
+            data.extend_from_slice(&other.data[(data_len2 - data_len1)..]);
+        } else {
+            data.extend_from_slice(&self.data[(data_len1 - data_len2)..]);
+        }
+
+        Self {
+            data,
+            len,
+            byte_idx: 0,
+            bit_idx: 0,
+        }
+    }
 }
 
 // ############################################################################
@@ -494,13 +595,46 @@ impl ops::AddAssign for BitVec {
     }
 }
 
-// todo
-// BitAnd
-// BitAndAssign
-// BitOr
-// BitOrAssign
-// BitXor
-// BitXorAssign
+impl ops:: BitAnd for BitVec {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        self.intersec(&rhs)
+    }
+}
+
+impl ops::BitAndAssign for BitVec {
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self = self.intersec(&rhs)
+    }
+}
+impl ops::BitOr for BitVec {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(&rhs)
+    }
+}
+
+impl ops::BitOrAssign for BitVec {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = self.union(&rhs)
+    }
+}
+
+impl ops::BitXor for BitVec {
+    type Output = Self;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        self.symm_diff(&rhs)
+    }
+}
+
+impl ops::BitXorAssign for BitVec {
+    fn bitxor_assign(&mut self, rhs: Self) {
+        *self = self.symm_diff(&rhs)
+    }
+}
 
 /// Returns the byte at index
 impl ops::Index<usize> for BitVec {
@@ -622,5 +756,59 @@ mod tests {
         let bv2 = BitVec { data: vec![0x98], len: 5, byte_idx: 0, bit_idx: 0};
         assert_eq!(bv1.compliment().data[0], 0x92);
         assert_eq!(bv2.compliment().data[0], 0x60);
+    }
+
+    #[test]
+    fn intersec_two_vecs() {
+        // bv1 = 0b01101011 0b101xxxxx len = 11
+        let bv1 = BitVec { data: vec![0x6B, 0xA0], len: 11, byte_idx: 0, bit_idx: 0};
+        // bv2 = 0b1110011x len = 7
+        let bv2 = BitVec { data: vec![0xE6], len: 7, byte_idx: 0, bit_idx: 0};
+        // bv1 & bv2 = 0b01100010
+        // let bv3 = bv1.intersec(&bv2);
+        let bv3 = bv1 & bv2;
+        assert_eq!(bv3.data[0], 0x62);
+        assert_eq!(bv3.len, 7);
+    }
+
+    #[test]
+    fn symm_diff_two_vecs() {
+        // bv1 = 0b01101011 0b101xxxxx len = 11
+        let bv1 = BitVec { data: vec![0x6B, 0xA0], len: 11, byte_idx: 0, bit_idx: 0};
+        // bv2 = 0b1110011x len = 7
+        let bv2 = BitVec { data: vec![0xE6], len: 7, byte_idx: 0, bit_idx: 0};
+        // bv3 = 0b10010011 len = 8
+        let bv3 = BitVec { data: vec![0x93], len: 8, byte_idx: 0, bit_idx: 0};
+        // bv1 ^ bv2 = 0b10001101 0b10100000
+        let bv4 = bv1.symm_diff(&bv2);
+        assert_eq!(bv4.data[0], 0x8D);
+        assert_eq!(bv4.data[1], 0xA0);
+        assert_eq!(bv4.len, 11);
+        let bv5 = bv2.symm_diff(&bv1);
+        assert_eq!(bv5.data[0], 0x8D);
+        assert_eq!(bv5.data[1], 0xA0);
+        // bv2 ^ bv3 = 0b01110101
+        // let bv6 = bv2.symm_diff(&bv3);
+        let bv6 = bv2 ^ bv3;
+        assert_eq!(bv6.data[0], 0x75);
+    }
+
+    #[test]
+    fn union_two_vecs() {
+        // bv1 = 0b01101011 0b101xxxxx len = 11
+        let bv1 = BitVec { data: vec![0x6B, 0xA0], len: 11, byte_idx: 0, bit_idx: 0};
+        // bv2 = 0b1110011x len = 7
+        let bv2 = BitVec { data: vec![0xE6], len: 7, byte_idx: 0, bit_idx: 0};
+        // bv3 = 0b10010011 len = 8
+        let bv3 = BitVec { data: vec![0x93], len: 8, byte_idx: 0, bit_idx: 0};
+        // bv1 ^ bv2 = 0b11101111 0b10100000
+        let bv4 = bv1.union(&bv2);
+        assert_eq!(bv4.data[0], 0xEF);
+        assert_eq!(bv4.data[1], 0xA0);
+        assert_eq!(bv4.len, 11);
+        // bv2 ^ bv3 = 0b11110111
+        // let bv5 = bv2.union(&bv3);
+        let bv5 = bv2 | bv3;
+        assert_eq!(bv5.data[0], 0xF7);
     }
 }
