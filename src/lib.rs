@@ -300,14 +300,20 @@ impl BitVec {
 
     /// Reads 8 bits in sequence and returns a byte (can be offset)
     pub fn read_byte(&mut self) -> Option<u8> {
-        let mut byte: u8 = 0;
-        for _ in 0..8 {
-            if let Some(bit) = self.seq_read() {
-                byte = (byte << 1) | bit;
-            } else {
-                return None;
-            }
+        if (self.byte_idx * 8 + self.bit_idx as usize + 8) > self.len {
+            return None;
         }
+
+        let byte: u8;
+
+        if self.bit_idx == 0 {
+            byte = self.data[self.byte_idx];
+        } else {
+            byte = (self.data[self.byte_idx] << self.bit_idx) | (self.data[self.byte_idx + 1] >> (8 - self.bit_idx));
+        }
+
+        self.byte_idx += 1;
+        
         Some(byte)
     }
 
@@ -663,6 +669,9 @@ impl ops::Not for BitVec {
     }
 }
 
+// ############################################################################
+// Unit tests
+// ############################################################################
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -746,6 +755,15 @@ mod tests {
         assert_eq!(bv3.data[0], 13);
         assert_eq!(bv3.data[1], 128);
         assert_eq!(bv3.len, 9);
+    }
+
+    #[test]
+    fn read_offset_byte() {
+        // bv = 0b11010111 0b01011001
+        let mut bv = BitVec { data: vec![0xD7,0x59], len: 16, byte_idx: 0, bit_idx: 3};
+        // read byte = 0b10111010
+        assert_eq!(bv.read_byte().unwrap(), 0xBA);
+        assert_eq!(bv.read_byte(), None);
     }
 
     #[test]
